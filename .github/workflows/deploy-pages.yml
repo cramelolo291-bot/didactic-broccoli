@@ -1,0 +1,64 @@
+name: Deploy Codelolo.ai to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Lint (report existing issues without blocking deploy)
+        continue-on-error: true
+        run: npm run lint
+      - name: Run tests
+        run: npm test
+      - name: Build site
+        env:
+          # Public Vite variables are optional. Keep the interactive mock mode
+          # until a separately hosted API is configured in repository Variables.
+          VITE_BASE_PATH: /Codelolo.ai/
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_API_MODE: ${{ vars.VITE_API_MODE || 'mock' }}
+        run: npm run build && cp dist/index.html dist/404.html
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          name: codelolo-pages
+          path: dist
+  deploy:
+    if: github.event_name != 'pull_request'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: codelolo-pages
